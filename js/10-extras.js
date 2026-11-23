@@ -235,7 +235,9 @@ function nwChart(){
   return `<svg class="nwchart" viewBox="0 0 ${W} ${Ht}" role="img" aria-label="淨資產走勢">
     <line x1="${p}" x2="${W-p}" y1="${Y(0)}" y2="${Y(0)}" class="zero"/>
     <polyline points="${pts}" class="ln"/>
-    <circle cx="${X(pk[0])}" cy="${Y(pk[1])}" r="4" class="pk"/><text x="${Math.min(X(pk[0]),W-120)}" y="${Math.max(Y(pk[1])-8,12)}" class="lb">最高 ${fmt(pk[1])} 萬（${pk[0]} 歲）</text>
+    ${(()=>{/* 金額標籤：只寫金額（年齡看下方時間軸）；在右半邊就往左長；最高點和最後一年太近就只標最後一年 */
+      const L=H[H.length-1],lab=(h,cls)=>{const x=X(h[0]),right=x>W/2;return `<circle cx="${x}" cy="${Y(h[1])}" r="4" class="pk"/><text x="${right?x-8:x+8}" y="${Math.max(Y(h[1])-8,12)}" class="lb" text-anchor="${right?'end':'start'}">${fmt(h[1])} 萬</text>`};
+      return (L!==pk&&Math.abs(X(L[0])-X(pk[0]))>130?lab(pk):'')+lab(L)})()}
     <text x="${p}" y="${Ht-6}" class="ax">${x0} 歲</text><text x="${W-p}" y="${Ht-6}" class="ax" text-anchor="end">${x1} 歲</text></svg>`;
 }
 
@@ -257,7 +259,7 @@ function shareImage(kind){
   g.strokeStyle='#cfe0d6';g.lineWidth=2;for(let y=60;y<H;y+=48){g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}
   g.fillStyle='#fffdf7';g.fillRect(60,60,W-120,H-120);g.strokeStyle=ink;g.lineWidth=4;g.strokeRect(60,60,W-120,H-120);
   let y=story?180:140;
-  g.fillStyle=ink2;g.font=`500 ${story?34:30}px ${sans}`;g.fillText(`會計人生模擬器・${S.name?S.name+' 的':''}人生資產負債表`,110,y);y+=story?130:110;
+  g.fillStyle=ink2;g.font=`500 ${story?34:30}px ${sans}`;g.fillText(`會計人生模擬器・${S.name?S.name+' 的':''}人生資產負債表・${S.age} 歲結帳`,110,y);y+=story?130:110;
   g.fillStyle=ink;g.font=`900 ${story?92:74}px ${serif}`;y=wrapText(g,title,110,y,W-220,story?108:86)+(story?80:60);
   g.fillStyle=ink2;g.font=`400 ${story?34:30}px ${sans}`;y=wrapText(g,desc,110,y,W-220,story?50:44)+(story?50:40);
   g.strokeStyle=ink;g.lineWidth=3;g.beginPath();g.moveTo(110,y);g.lineTo(W-110,y);g.stroke();y+=story?80:60;
@@ -269,17 +271,30 @@ function shareImage(kind){
   if(dmList(S).length)row('雙主修／輔系',dmLabel(S));
   row('最高職位',S.peak?S.peak.t:'—');
   row('證照',Object.keys(S.certs).map(k=>k==='CPA'?'會計師':k).join('、')||'無');
-  row('結束年齡',`${S.age} 歲`);
-  row('淨資產',`${fmt(nw)} 萬`,nw<0?red:green);
+  /* 小型資產負債表（2×2）：一生收入、一生支出、淨資產、折現回 15 歲的現值（單位：萬，負數加括號） */
+  {const LG=lifeLedger(),bh=story?200:150,bx=110,bw=W-220,cw=bw/2,top=y-(story?38:34);
+   g.fillStyle='#f3efe2';g.fillRect(bx,top,bw,bh);g.strokeStyle=ink;g.lineWidth=2;g.strokeRect(bx,top,bw,bh);
+   g.beginPath();g.moveTo(bx+cw,top);g.lineTo(bx+cw,top+bh);g.moveTo(bx,top+bh/2);g.lineTo(bx+bw,top+bh/2);g.strokeStyle='#cfc6ad';g.stroke();
+   const cell=(i,j,k,v,col,bold)=>{const x=bx+j*cw,yy=top+i*bh/2;g.fillStyle=ink2;g.font=`500 ${story?28:22}px ${sans}`;g.fillText(k,x+20,yy+(story?40:32));
+     g.fillStyle=col;g.font=`${bold?800:700} ${story?42:32}px ${sans}`;g.textAlign='right';g.fillText(fmt2(v)+' 萬',x+cw-20,yy+(story?88:66));g.textAlign='left'};
+   cell(0,0,'一生收入',LG.earn,ink);LG.spent>=0?cell(0,1,'一生支出',-LG.spent,red):cell(0,1,'投資與其他收入淨額',-LG.spent,ink);
+   cell(1,0,'淨資產',LG.nw,LG.nw<0?red:green,true);cell(1,1,'折現回 15 歲的現值',LG.pv,LG.pv<0?red:ink);
+   y=top+bh+(story?78:60);}
   const tl=(S.titles||[]).map(k=>TITLES[k].n).slice(0,5);
   g.fillStyle=gold;g.font=`700 ${story?34:30}px ${sans}`;y=wrapText(g,tl.length?'稱號：'+tl.join('・'):'稱號：平凡也是一種天賦',110,y+10,W-220,44)+(story?70:56);
-  const ach=[...S.achv].slice(0,6);g.fillStyle=ink2;g.font=`500 ${story?30:28}px ${sans}`;y=wrapText(g,'成就：'+(ach.join('、')||'無'),110,y,W-220,40)+50;
+  const ach=[...S.achv].slice(0,story?6:4);g.fillStyle=ink2;g.font=`500 ${story?30:28}px ${sans}`;y=wrapText(g,'成就：'+(ach.join('、')||'無'),110,y,W-220,40)+50;
   /* 限動版：中間畫一條人生淨資產走勢 */
-  const Hh=S.nwHist||[];if(story&&Hh.length>1){const top=y+20,bot=H-110-300,x0=110,x1=W-110;if(bot-top>160){
+  const Hh=S.nwHist||[];if(story&&Hh.length>1){const top=y+20,bot=H-110-300,x0=110,x1=W-110;if(bot-top>110){
     const ys=Hh.map(h=>h[1]),mn=Math.min(0,...ys),mx=Math.max(1,...ys);const X=i=>x0+i/(Hh.length-1)*(x1-x0),Y=v=>bot-(v-mn)/(mx-mn||1)*(bot-top-40);
     g.fillStyle=ink2;g.font=`500 28px ${sans}`;g.fillText('人生淨資產走勢',x0,top);
     g.strokeStyle='#cfc6ad';g.setLineDash([8,8]);g.beginPath();g.moveTo(x0,Y(0));g.lineTo(x1,Y(0));g.stroke();g.setLineDash([]);
     g.strokeStyle=green;g.lineWidth=6;g.beginPath();Hh.forEach((h,i)=>i?g.lineTo(X(i),Y(h[1])):g.moveTo(X(i),Y(h[1])));g.stroke();
+    /* 金額標籤：最高點、最後一年 */
+    const pk=Hh.reduce((a,b,i)=>b[1]>Hh[a][1]?i:a,0),li=Hh.length-1;g.font=`700 26px ${sans}`;
+    const dot=(i,col)=>{g.fillStyle=col;g.beginPath();g.arc(X(i),Y(Hh[i][1]),9,0,Math.PI*2);g.fill()};
+    const tag=(i,t,col,right)=>{const tx=right?Math.min(X(i),x1):Math.max(X(i),x0);g.fillStyle=col;g.textAlign=right?'right':'left';g.fillText(t,right?tx-6:tx+6,Math.max(Y(Hh[i][1])-18,top+34));g.textAlign='left'};
+    if(pk!==li&&Math.abs(X(li)-X(pk))>220){dot(pk,gold);tag(pk,`${fmt(Hh[pk][1])} 萬`,gold,X(pk)>(x0+x1)/2)}
+    dot(li,Hh[li][1]<0?red:green);tag(li,`${fmt(Hh[li][1])} 萬`,Hh[li][1]<0?red:green,true);
     g.fillStyle=ink2;g.font=`500 24px ${sans}`;g.fillText(`${Hh[0][0]} 歲`,x0,bot+36);g.textAlign='right';g.fillText(`${Hh[Hh.length-1][0]} 歲`,x1,bot+36);g.textAlign='left';}}
   /* 底部：挑戰 QR code */
   const qs=story?260:190,qx=W-110-qs,qy=H-110-qs;const hasQR=drawQR(g,challengeLink(),qx,qy,qs);
@@ -293,7 +308,12 @@ function shareImage(kind){
     const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=f.name;document.body.appendChild(a);a.click();a.remove();
   },'image/png');
 }
-function wrapText(g,t,x,y,w,lh){let line='';for(const ch of String(t)){if(g.measureText(line+ch).width>w){g.fillText(line,x,y);y+=lh;line=ch}else line+=ch}if(line){g.fillText(line,x,y)}return y}
+/* 換行（避頭尾）：句號、逗號、右括號這類標點不放在行首，會留在上一行尾巴；左括號、左引號不放在行尾 */
+const NOHEAD='，。、；：！？）」』〉》…—・,.!?;:)%';const NOTAIL='（「『〈《(';
+function wrapText(g,t,x,y,w,lh){let line='';for(const ch of String(t)){
+    if(line&&g.measureText(line+ch).width>w&&!NOHEAD.includes(ch)){let carry='';while(line.length>1&&NOTAIL.includes(line[line.length-1])){carry=line[line.length-1]+carry;line=line.slice(0,-1)}g.fillText(line,x,y);y+=lh;line=carry+ch}
+    else line+=ch}
+  if(line){g.fillText(line,x,y)}return y}
 
 /* ================= PWA：加到主畫面 ================= */
 try{if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(e){}

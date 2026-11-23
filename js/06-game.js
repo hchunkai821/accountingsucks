@@ -39,11 +39,12 @@ function applyEff(e,chips,label){
   for(const k in e){
     const v=e[k];if(!v)continue;
     if(k in S.st){let x=v;if(x<0&&k==='hp')x=Math.round(x*tMul('hpLoss'))||-1;if(x<0&&k==='mind')x=Math.round(x*tMul('mindLoss'))||-1;S.st[k]=clamp(S.st[k]+x,0,100);chips&&chips.push([STATN[k],x])}
-    else if(k==='cash'){S.cash+=v;S.ledger.push([label||'其他',v]);chips&&chips.push(['存款',v,'萬'])}
+    else if(k==='cash'){S.cash=money(S.cash+v);S.ledger.push([label||'其他',v]);chips&&chips.push(['存款',v,'萬'])}
     else if(k==='perf'){S.perf=clamp(S.perf+v,0,100);chips&&S.phase==='work'&&chips.push(['績效',v])}
     else if(k==='love'){S.love+=v}
     else if(k==='pt'){S.bonusPts+=v;chips&&chips.push(['明年點數',v])}
     else if(k==='port'){S.port+=v;chips&&chips.push(['學習歷程',v])}
+    else if(k==='fans'){S.fans=Math.max(0,(S.fans||0)+v);chips&&chips.push(['訂閱',v,'萬'])}
   }
 }
 function overall(){const s=S.st;return Math.round(s.aca*.15+s.skill*.3+s.eng*.1+s.hp*.12+s.mind*.13+s.net*.2)}
@@ -63,7 +64,12 @@ function jobSalary(s=S){
   if(J.special)return s.job.lastInc||0;
   return Math.round(J.lad[s.job.lvl][1]*(1+0.025*s.job.yrs)*(s.W?sectorMul(s.job.key):1));
 }
-const fmt=n=>{n=Math.round(n);const a=Math.abs(n).toLocaleString('en-US');return n<0?`(${a})`:a};
+/* 金額單位是萬元，記到小數第二位（0.18 萬＝1,800 元）。
+   fmt：有小數才顯示小數；fmt2：帳本用，一律兩位小數，負數加括號 */
+const money=n=>Math.round(n*100)/100;
+const fmt=n=>{n=money(n);const d=Number.isInteger(n)?0:2;const a=Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});return n<0?`(${a})`:a};
+const feeTxt=v=>v>=1?`${fmt(v)} 萬`:`${Math.round(v*10000).toLocaleString('en-US')} 元`;
+const fmt2=n=>{n=money(n);const a=Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});return n<0?`(${a})`:a};
 const sign=n=>n>0?`+${n}`:`${n}`;
 const uniName=u=>u?`${u.n}${u.d}`:'';
 
@@ -101,6 +107,7 @@ function confirmPlan(){
     if(id==='cpacram')S.flags.cpaCram=1;
     if(id==='law'||id==='lawnight'){S.flags.lawY=(S.flags.lawY||0)+1;if(S.flags.lawY>=2&&!S.flags.law){S.flags.law=1;chips.push(['法律學分修滿',1,''])}}
     if(id==='research'){S.flags.research=1}
+    if(id==='cpatrain'){S.flags.cpaTrain=1;chips.push(['會計師職前訓練完成',1,''])}
     if(id==='credits'){S.flags.credY=(S.flags.credY||0)+1;if(S.flags.credY>=2){S.flags.accCredits=1}}
     if(id==='love'){if(rand()<.5+tSum('love')*.3)S.love++}
     if(id==='side'){S.fans+=ri(0,3)+Math.floor(S.st.mind/40)}
@@ -152,16 +159,23 @@ function nextEvent(){
   S.ev=ev;S.yearEvs.push(ev.id);S.yearTitles.push(ev.t);S.recent.push(ev.t);if(S.recent.length>12)S.recent.shift();
   S.evRes=null;S.stage='event';render();
 }
+/* 高中低風險的成功率固定：35%／50%／70%；有「天選之人」這類運氣稱號時是 50%／65%／80%。
+   用 20 面骰：擲出 ≥ 門檻就成功（≥14＝35%、≥11＝50%、≥8＝65%、≥7＝70%、≥5＝80%） */
+const TIER_DC={3:[14,11,17],2:[11,8,14],1:[7,5,10]};/* [一般, 天選之人, 衰神附體]：衰神是 ≥17＝20%、≥14＝35%、≥10＝55% */
+function luckyNow(s){return tChk('luck',s)>0}
+function unluckyNow(s){return tChk('luck',s)<0}
+function tierDC(c){return c&&c.tier&&TIER_DC[c.tier]?TIER_DC[c.tier][luckyNow()?1:unluckyNow()?2:0]:null}
+function tierP(c){const dc=tierDC(c);return dc==null?null:(21-dc)/20}
 function chooseOpt(i){
   const c=S.ev.c[i];const chips=[];
   if(c.tag)S.flags[c.tag]=(S.flags[c.tag]||0)+1; /* 記住這個選擇，多年後可能有後果 */
   if(c.d){
-    const stat=c.d.s;const mod=(stat?Math.floor((S.st[stat]-50)/10):0)+tChk(stat||'luck');
-    const roll=ri(1,20);if(roll===20)S.c20++;if(roll===1)S.c1++;const ok=roll===20||(roll!==1&&roll+mod>=c.d.dc);
+    const stat=c.d.s,fixed=tierDC(c);const mod=fixed!=null?0:(stat?Math.floor((S.st[stat]-50)/10):0)+tChk(stat||'luck');const dc=fixed!=null?fixed:c.d.dc;
+    const roll=ri(1,20);if(roll===20)S.c20++;if(roll===1)S.c1++;const ok=fixed!=null?roll>=dc:(roll===20||(roll!==1&&roll+mod>=dc));
     const br=ok?c.ok:c.ng;
     applyEff(br.e,chips,S.ev.t);if(br.f)S.flags[br.f]=1;const xt=br.fx?br.fx(S):'';
     const tt=eventTitle(c,ok,roll);
-    S.evRes={roll,mod,dc:c.d.dc,stat,ok,r:br.r+(typeof xt==='string'&&xt?' '+xt:''),chips,label:c.t,title:tt};
+    S.evRes={roll,mod,dc,stat:fixed!=null?null:stat,ok,r:br.r+(typeof xt==='string'&&xt?' '+xt:''),chips,label:c.t,title:tt};
   }else{
     applyEff(c.e,chips,S.ev.t);if(c.f)S.flags[c.f]=1;const xt=c.fx?c.fx(S):'';
     S.evRes={r:c.r+(typeof xt==='string'&&xt?' '+xt:''),chips,label:c.t};
@@ -173,25 +187,32 @@ function afterEvent(){if(S.dead){endGame('death');return}if(S.evN<3)nextEvent();
 
 function examMod(E){
   const v=avg(E.st.map(k=>S.st[k]));
-  return Math.floor((v-40)/8)+(S.trait==='exam'?2:0)+(S.flags.cram?1:0)+tSum('exam');
+  /* 會計師：27 歲以後每 3 歲擲骰 -1（工作、家庭越來越忙）。
+     對照考選部 112 年及格人員：平均 27.6 歲、21-25 歲占 54%、26-30 歲 26% */
+  /* 律師：30 歲以後每 3 歲擲骰 -1（會計背景、非法律本科，越晚越難準備；避免有人一路考到 60 歲） */
+  const agePen=E===EXAMS.CPA&&S.age>27?Math.floor((S.age-27)/3):E===EXAMS['律師']&&S.age>30?Math.floor((S.age-30)/3):0;
+  return Math.floor((v-40)/8)+(S.trait==='exam'?2:0)+(S.flags.cram?1:0)+tSum('exam')-agePen;
 }
 function takeExams(notes){
   const k=S.examT;if(!k||!S.acts.includes('exam'))return;
   const E=EXAMS[k];if(!E.ok(S))return;
-  S.cash-=E.cost;S.ledger.push([`${E.name}報名費`,-E.cost]);
+  if(E.cost){S.cash=money(S.cash-E.cost);S.ledger.push([`${E.name}報名費`,-E.cost])}
   let mod=examMod(E)-(['CPA','高考','調查特考','記帳士'].includes(k)?S.W.exam[S.year]:0)+(k==='高考'&&S.flags.nudge?1:0)+(k==='CPA'?(S.flags.cpaCram?1:0)+(S.flags.cpaBoost?1:0):0)+(k==='高考'||k==='調查特考'?(S.flags.gC?1:0):0);
   const pass=(r,m,dc)=>r===20||(r!==1&&r+m>=dc);
   if(E.subj){
     /* 分科考：可以一科一科累積（CFA 要一級一級考） */
-    const unit=k==='CFA'?'級':'科';const before=examProg(k);let cur=before;const rolls=[];
-    for(let i=cur;i<E.subj;i++){const r=ri(1,20);rolls.push(r);if(pass(r,mod,E.dc))cur++;else if(k==='CFA')break}
+    const unit=k==='CFA'?'級':'科';const before=examProg(k);const rolls=[];
+    if(WINDOW_Y[k]!=null){S.entryY=S.entryY||{};if(S.entryY[k]==null)S.entryY[k]=S.year}
+    const py=KEEP_Y[k]?passYears(k):null;let cur=before;
+    for(let i=cur;i<E.subj;i++){const r=ri(1,20);rolls.push(r);if(pass(r,mod,E.dc)){cur++;if(py)py.push(S.year)}else if(k==='CFA')break}
     setExamProg(k,cur);const got=cur-before;
     if(cur>=E.subj){S.certs[k]=1;const nm={CPA:'會計師',USCPA:'US CPA',CFA:'CFA',CIA:'CIA',CMA:'CMA'}[k]||E.name;notes.push(['good',`🎉 ${E.name}全部通過！你拿到了「${nm}」資格！`]);S.achv.add('考上 '+nm)}
     else notes.push([got?'':'bad',`${E.name}：本次過了 ${got} ${unit}，累計 ${cur}/${E.subj} ${unit}。（擲骰 ${rolls.join('、')}，修正 ${sign(mod)}，門檻 ${E.dc}）`]);
   }else if(E.stages){
     /* 多階段考試：前一關過了才能考下一關，沒過明年從頭來 */
     const log=[];let ok=true;
-    for(const [nm,st] of E.stages){
+    for(const [si,[nm,st]] of E.stages.entries()){
+      const fee=(E.stageFee||[])[si];if(fee){S.cash=money(S.cash-fee);S.ledger.push([`${E.name}${nm}報名費`,-fee])}
       const m=st?Math.floor((S.st[st]-40)/8)+(st==='mind'?Math.floor((S.st.net-50)/15):0):mod;const dc=st?10:E.dc;const r=ri(1,20);
       if(pass(r,m,dc)){log.push(`${nm}✔（${r}${sign(m)}）`)}else{log.push(`${nm}✘（${r}${sign(m)} < ${dc}）`);ok=false;break}
     }
@@ -206,6 +227,23 @@ function takeExams(notes){
 const EXAM_KEY={CPA:'cpa',USCPA:'uscpa',CFA:'cfa'};
 function examProg(k){return EXAM_KEY[k]?(S[EXAM_KEY[k]]||0):((S.ep||{})[k]||0)}
 function setExamProg(k,v){if(EXAM_KEY[k])S[EXAM_KEY[k]]=v;else{S.ep=S.ep||{};S.ep[k]=v}}
+/* 及格科目的保留期限（一年只考一次，所以換算成「之後幾年的考試還能沿用」）：
+   會計師：自榜示日起保留 3 年（考試規則第 10 條）→ 之後 3 年
+   US CPA：自成績公布日起 30 個月（NASBA 2023 年修正）→ 之後 2 年（第 3 年已超過 30 個月） */
+const KEEP_Y={CPA:3,USCPA:2};
+const KEEP_TXT={CPA:'3 年',USCPA:'30 個月'};
+/* CIA（IIA：申請通過後 3 年）、CMA（IMA：進入認證計畫後 3 年）：從第一次報考那年起，3 年內要全部考完 */
+const WINDOW_Y={CIA:2,CMA:2};
+function passYears(k){S.passY=S.passY||{};if(k==='CPA'&&S.cpaPass&&!S.passY.CPA){S.passY.CPA=S.cpaPass;delete S.cpaPass}
+  const n=examProg(k);let a=(S.passY[k]||[]).slice(0,n);while(a.length<n)a.push(S.year);return S.passY[k]=a}
+function expireCredits(notes){
+  for(const k in KEEP_Y){if(S.certs[k]||!examProg(k))continue;const a=passYears(k),keep=a.filter(y=>S.year-y<=KEEP_Y[k]),lost=a.length-keep.length;
+    if(lost){S.passY[k]=keep;setExamProg(k,keep.length);notes.push(['bad',`⌛ ${EXAMS[k].name}：有 ${lost} 科及格成績超過 ${KEEP_TXT[k]}保留期限，失效了。目前剩 ${keep.length}/${EXAMS[k].subj} 科。`])}}
+  S.entryY=S.entryY||{};
+  for(const k in WINDOW_Y){const y0=S.entryY[k];if(y0==null||S.certs[k]||S.year-y0<=WINDOW_Y[k])continue;
+    const had=examProg(k);delete S.entryY[k];setExamProg(k,0);
+    if(had)notes.push(['bad',`⌛ ${EXAMS[k].name}：從第一次報考起已經超過 3 年還沒考完，已過的 ${had} 科全部失效。要重新報名。`])}
+}
 function licenseRoll(notes){
   if(!S.flags.c3){const r=ri(1,20),m=Math.floor((S.st.skill-40)/8)+(S.trait==='exam'?2:0);if(r+m>=8){S.flags.c3=1;notes.push(['good',`🎉 會計事務丙級檢定通過！（擲骰 ${r}${sign(m)}）`])}else notes.push(['bad','丙級檢定沒過，明年再來。'])}
   else if(!S.flags.skillCert){const r=ri(1,20),m=Math.floor((S.st.skill-40)/8)+(S.trait==='exam'?2:0);if(r+m>=13){S.flags.skillCert=1;notes.push(['good',`🎉 會計事務乙級檢定通過！可以走「技優甄審」了。（擲骰 ${r}${sign(m)}）`])}else notes.push(['bad',`乙級檢定差一點。（擲骰 ${r}${sign(m)} < 13）`])}
@@ -278,28 +316,43 @@ function yearEnd(){
     if(econNow()<0&&S.job&&!S.job.special&&!GOVJ.includes(S.job.key)&&rand()<.06){notes.push(['bad','景氣衰退，公司裁員，你在名單上。']);S.job=null}
     L.push(['生活費'+(S.married?'（含家庭）':'')+(S.age>=30?'＋孝親費':''),-live]);S.cash-=live;
     /* 沒買房就要租房（外派的住房已算在生活費裡） */
-    if(!S.house&&!inJob(S,'abroad')){const rent=(S.age<30?14:S.age<40?18:22)+(S.married?8:0)+kidsDep()*3;L.push(['房租',-rent]);S.cash-=rent}
+    {const rent=rentNow();if(rent){L.push(['房租',-rent]);S.cash-=rent}}
     if((S.flags.carY||0)>0){L.push([`車貸＋養車（車貸剩 ${S.flags.carY} 年）`,-14]);S.cash-=14;S.flags.carY--}
     else if(S.flags.car){L.push(['養車（油錢、保險、停車位）',-6]);S.cash-=6}
     if(S.love>0&&!S.married){const d=4+Math.min(S.love,3)*2;L.push(['約會、紀念日、一起旅行',-d]);S.cash-=d}
     if((S.flags.careY||0)>0){L.push([`${originOf().rel}的長照費用（還要 ${S.flags.careY} 年）`,-20]);S.cash-=20;S.flags.careY--;if(!S.flags.careY)S.flags.careDone=1}
-    if(S.mortgage>0){L.push([`房貸（剩 ${S.mortgage} 年）`,-32]);S.cash-=32;S.mortgage--}
+    if(S.mortgage>0){const ln=loanLeft(),it=Math.round(ln*HOUSE.rate),pay=S.mortgage===1?ln+it:HOUSE.pay,prin=Math.min(ln,pay-it);
+      S.loan=ln-prin;S.cash-=pay;S.mortgage--;if(!S.mortgage)S.loan=0;S.houseSpent=(S.houseSpent||0)+prin;
+      L.push([`房貸（本金 ${prin}＋利息 ${it}，剩 ${S.mortgage} 年）`,-pay])}
     if(S.acts.includes('night')&&!deg(S)){S.flags.nightY=(S.flags.nightY||0)+1;
       if(S.flags.nightY>=4){S.edu.deg=true;S.edu.night=true;S.edu.major=S.edu.major||'acc';S.edu.pres=Math.max(S.edu.pres||0,1);notes.push(['good','🎉 進修部畢業！你拿到了大學學歷。']);S.achv.add('半工半讀拿到學位')}
       else notes.push(['',`進修部第 ${S.flags.nightY} 年完成（讀滿 4 年拿學位）`])}
     if(S.acts.includes('credits')&&S.flags.accCredits&&!S.flags.credNote){S.flags.credNote=1;notes.push(['good','會計學分補修完成，可以報考會計師了！'])}
   }
+  expireCredits(notes);
+  pensionYear(notes);
   takeExams(notes);
-  if(S.phase==='work'&&S.st.eng>=62&&!S.flags.engNote){S.flags.engNote=1;notes.push(['good','🌏 英文達到 62：可以投遞新加坡區域財務的職缺了（另外要專業 52）。'])}
+  if(S.phase==='work'&&S.st.eng>=75&&!S.flags.engNote){S.flags.engNote=1;notes.push(['good','🌏 英文達到 75：可以投遞新加坡區域財務的職缺了（另外要專業 58）。'])}
   if(S.fans>0&&!inJob(S,'creator')&&S.acts.includes('side')){const g=Math.round(S.fans*.8);if(g>0){S.cash+=g;L.push(['自媒體副業收入',g])}}
   // stress
   const J=S.job?JOBS[S.job.key]:null;const str=S.phase==='work'?(J?J.stress:3):(S.phase==='hs'&&S.sy>=3?6:3);
   const hpT=68-Math.max(0,S.age-45)*1.2;/* 45 歲以後，身體自然恢復的目標越來越低 */
   let dh=Math.round((hpT-S.st.hp)*.2-str*.6+2),dm=Math.round((65-S.st.mind)*.2-str*.45+2);
   if(S.age>=45)dh-=2;if(S.age>=55)dh-=2;if(S.flags.gym)dh+=2;if(S.flags.cat)dm+=1;
-  dh+=tSum('hpY');if(dh<0)dh=Math.round(dh*tMul('hpLoss'));if(dm<0)dm=Math.round(dm*tMul('mindLoss'));
+  dh+=tSum('hpY');dm+=tSum('mindY');if(dh<0)dh=Math.round(dh*tMul('hpLoss'));if(dm<0)dm=Math.round(dm*tMul('mindLoss'));
   if(!S.job&&S.phase==='work')dm-=6;
-  if(S.cash<0){dm-=6;notes.push(['bad','存款變成紅字了。會計人最怕看到的括號，出現在自己的帳上。'])}
+  /* 出社會後欠錢要付利息；學生時期當作跟爸媽借的，不收利息，但還是自己的負債。
+     信用卡循環利率依信用評等分級（法定上限 15%，多數人約 5%）：欠款第 1 年 5%，之後每年 +2.5%，第 5 年起 15%。
+     前 30 萬（約信用卡額度）用循環利率，超過的部分轉成信用貸款／債務協商，利率 6%（不然會無限滾雪球）。
+     存款回到正數，信用就慢慢恢復，下次欠款從 5% 重新算 */
+  if(S.cash<0&&S.phase==='work'){S.flags.debtY=(S.flags.debtY||0)+1;
+    const rate=Math.min(.15,.05+(S.flags.debtY-1)*.025),debt=-S.cash,card=Math.min(debt,30),loan=debt-card,i1=money(card*rate),i2=money(loan*.06);
+    if(i1>0){L.push([`負債利息：信用卡循環（${+(rate*100).toFixed(1)}%，欠款第 ${S.flags.debtY} 年）`,-i1])}
+    if(i2>0){L.push(['負債利息：信用貸款／債務協商（6%）',-i2]);if(!S.flags.debtNote){S.flags.debtNote=1;notes.push(['bad','💳 欠款超過信用卡額度了。銀行把超過的部分轉成信用貸款，利率比較低，但你得慢慢還。'])}}
+    if(S.flags.debtY===3)notes.push(['bad','📉 連續欠款三年，你的信用評等越來越差，循環利率一直往上調。'])
+    S.cash=money(S.cash-i1-i2)}
+  else if(S.phase==='work')S.flags.debtY=0;
+  if(S.cash<0){if(S.phase==='work'){dm-=6;notes.push(['bad','存款變成紅字了。會計人最怕看到的括號，出現在自己的帳上。'])}else{dm-=2;notes.push(['bad',`你跟${originOf().rel}借了錢。${originOf().rel}說不急，但這筆帳，你自己記得。`])}}
   S.st.hp=clamp(S.st.hp+dh,0,100);S.st.mind=clamp(S.st.mind+dm,0,100);
   /* 體力上限：45 歲以後每年下降，休息也補不回來（65 歲剩 65） */
   const hpCap=Math.round(100-Math.max(0,S.age-45)*1.75);
@@ -418,7 +471,7 @@ function acceptOffer(i){
   const old=S.job?jobTitle():null;
   if(J.cost){S.cash-=J.cost}
   if(o.k==='selfbook'||o.k==='selfcpa')S.clients=Math.max(S.clients,S.flags.sidebook?6:2)+Math.floor(S.st.net/15);
-  S.job={key:o.k,lvl:o.lvl||0,yrs:0,special:!!J.special};
+  S.job={key:o.k,lvl:o.lvl||0,yrs:0,special:!!J.special,...(o.why==='公司外派'?{expat:1}:{})};
   S.phase='work';
   if(ACH[o.k])S.achv.add(ACH[o.k]);
   S.log.push({y:S.year,a:S.age,t:'',h:`➜ ${old?`離開「${old}」，`:''}加入「${J.name}」${o.lvl?`（${J.lad[o.lvl][0]}）`:''}`});
@@ -556,14 +609,39 @@ function skipGrad(){
 }
 
 /* ================= ENDING ================= */
-function fireTarget(){return Math.max(2000,(S.lastLive||40)*25+kidsDep()*200)}
+/* 目前每年的房租（沒買房、沒外派才要付） */
+function rentNow(){return !S.house&&!inJob(S,'abroad')?(S.age<30?14:S.age<40?18:22)+(S.married?8:0)+kidsDep()*3:0}
+/* 提早退休門檻（4% 法則）：每年固定開銷 × 25。開銷包含生活費、房租、養車、約會；
+   還沒繳完的房貸要先還清，所以另外加上剩下的貸款 */
+function fireTarget(){const car=(S.flags.carY||0)>0?14:S.flags.car?6:0,love=S.love>0&&!S.married?4+Math.min(S.love,3)*2:0;
+  return Math.max(2000,((S.lastLive||40)+rentNow()+car+love)*25+kidsDep()*200+(S.mortgage>0?loanLeft():0))}
 function fireOK(){return S.phase==='work'&&S.age>=35&&S.cash>=fireTarget()}
 /* 還要養的小孩：出生後 22 年內（大學畢業前）才算開銷 */
 function kidsDep(){return S.kidY?S.kidY.filter(y=>S.year-y<22).length:S.kids}
-function netWorth(){return S.cash+(S.house?Math.round(1400-S.mortgage*20):0)}
-/* 現值：把結局的淨資產，用每年 2% 的通膨折現回 15 歲那年 */
+/* 房子：房價 1400 萬、頭期 250 萬、貸款 1150 萬、利率 2%、30 年本息平均攤還（每年約 51 萬）。
+   房產淨值＝房價－還沒還的貸款，所以買房當下淨資產不變 */
+const HOUSE={price:1400,down:250,rate:.02,pay:51};
+function loanLeft(){return S.loan!=null?S.loan:Math.round(S.mortgage*(HOUSE.price-HOUSE.down)/30)}
+function netWorth(){return money(S.cash+(S.house?HOUSE.price-(S.mortgage>0?loanLeft():0):0)+(S.rentProp||0)+(S.pen||0))}/* rentProp：收租的套房（300 萬） */
+/* 退休金專戶（不能提早領，所以「提早退休」只看存款）：
+   一般上班族：勞退新制，雇主每年提撥薪水的 6%（不從薪水扣；月提繳工資上限 15 萬）；新加坡當地聘用的沒有，公司外派的才有
+   公務員：2023/7/1 以後初任適用個人專戶制，以「本俸加一倍」（約薪水的 8 成）× 15% 提撥，政府 65%、個人 35%
+   專戶每年約 3% 報酬 */
+function pensionYear(notes){
+  if(S.pen)S.pen=Math.round(S.pen*1.03);
+  if(S.phase!=='work'||!S.job||JOBS[S.job.key].special||S.flags.hospNow)return;
+  if(S.job.key==='abroad'&&!S.job.expat)return;/* 自己應徵新加坡當地職缺：沒有台灣勞退（新加坡 CPF 也只給公民和永久居民）；台灣公司外派才繼續提撥 */
+  const sal=jobSalary(),gov=inJob(S,...GOVJ),add=Math.round(gov?sal*.8*.15:Math.min(sal,180)*.06);/* 勞退月提繳工資最高 15 萬（2026 年分級表），一年最多提繳 180 萬 × 6% ＝ 10.8 萬 */
+  S.pen=(S.pen||0)+add;
+  if(!S.flags.penNote){S.flags.penNote=1;notes.push(['',gov?`🏦 公務人員退撫個人專戶開始提撥：今年存入 ${add} 萬（政府 65%、個人 35%）。退休後才能領。`:`🏦 雇主開始幫你提撥勞退：每年薪水的 6% 存進個人專戶，今年 ${add} 萬。60 歲以後才能領。`])}
+}
+/* 現值：把結局的淨資產，用 2% 的折現率（資金的時間價值）折回 15 歲那年。
+   遊戲裡的薪水、物價不會隨通膨上漲，數字本來就是「今天的錢」，所以這裡不是扣通膨 */
 const PV_RATE=.02;
-function presentValue(v,years){return Math.round(v/Math.pow(1+PV_RATE,years))}
+function presentValue(v,years){return money(v/Math.pow(1+PV_RATE,years))}
+/* 人生資產負債表：期初存款＋一生收入－一生支出－購屋（轉為不動產）＝現金與投資；再加上不動產、退休金＝淨資產 */
+function lifeLedger(){const cash0=3+(TRAITS[S.trait].cash||0),house=S.houseSpent||0,nw=netWorth();
+  return {cash0,earn:S.earn,house,spent:money(cash0+S.earn-S.cash-house),cash:S.cash,prop:money(nw-S.cash-(S.pen||0)),pen:S.pen||0,nw,pv:presentValue(nw,S.age-15)}}
 function endPrologue(){S.stage='junior';render()}
 function currentSeason(d){d=d||new Date();const m=d.getMonth()+1;return m<=3?'busy':m===5?'tax':m>=6&&m<=8?'summer':m>=11?'yearend':''}
 function endGame(type){S.endType=type;S.stage='end';render()}
@@ -610,7 +688,7 @@ function endingTitle(){
   if(k==='selfbook')return[S.clients>=40?'記帳士界的里長伯':'巷口的記帳士',`${S.clients} 家客戶，每年五月門口大排長龍。你是整條街的財務守護神。`];
   if(k==='creator')return[S.fans>=60?'百萬訂閱財會網紅':'財會 YouTuber',`${S.fans} 萬人訂閱你的頻道。你讓會計變得不無聊，這可能是全台最難的事。`];
   if(k==='cafe')return['帳最漂亮的咖啡廳老闆','你離開了數字的世界，但每晚打烊後，還是會忍不住幫店裡做月結。'];
-  if(GOVJ.includes(k))return['安穩退休的公務員','準時上下班、穩穩領月退。你的人生沒有大起大落，但每天都睡得很好。'];
+  if(GOVJ.includes(k))return['安穩退休的公務員','準時上下班，退休金一筆一筆存進專戶。你的人生沒有大起大落，但每天都睡得很好。'];
   if(nw<0)return['負債退休的會計人','你幫無數公司把帳做平，自己的帳最後卻是括號。退休那天，你把信用卡帳單摺好，放進抽屜最深處。'];
   if((S.flags.hospN||0)>=2)return['用健康換存款的人',`你住過 ${S.flags.hospN} 次院，病歷比你的履歷還厚。存下來的錢，有一大半最後都繳給了醫院。`];
   if(S.flags.divorced&&nw<2500)return['帳平了，家散了','財產分得很清楚，每一筆都對得上。只是週末的餐桌，從此只剩一副碗筷。'];

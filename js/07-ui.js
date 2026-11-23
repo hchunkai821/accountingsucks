@@ -113,9 +113,9 @@ function diceWidget(o){
   const allCap=SK.every(k=>st[k]>=100);const done=left===0||allCap;
   const rowsN=Math.ceil(dice.length/9)||1,colsN=Math.ceil(dice.length/rowsN);
   const bar=`<div class="dicebar dc${colsN}">${dice.map((v,i)=>`<div class="d6 ${asg[i]?'used':''} ${i===cur?'sel':''} ${v===6?'six':''}" data-v="${v}">${pips(v)}<small>${asg[i]?STATN[asg[i]]:''}</small></div>`).join('')}</div>`;
-  const cue=done?`<div class="cue ok">骰子都分配完了！</div>`:`<div class="cue">剩 ${left} 顆　目前這顆：<b>${dice[cur]} 點</b></div>`;
+  const cue=done?`<div class="cue ok">骰子都分配完了！</div>`:`<div class="cue">剩 ${left} 顆　目前這顆：<b>${dice[cur]} 點</b>${SK.some(k=>diePts(dice[cur],k,S)!==dice[cur])?'<span class="pvn">（有稱號加成，實際點數標在各能力旁）</span>':''}</div>`;
   const rows=SK.map(k=>{const c=COST(st[k]);const d=st[k]-base[k];const on=!done&&st[k]<100;
-    return `<button class="abrow ${fl&&fl.k===k?'flash':''}" data-${p}s="${k}" title="${STATD[k]}" ${on?'':'disabled'}><span class="nm">${STATN[k]}</span><span class="bar2"><i data-w="${st[k]}"></i></span><span class="val">${st[k]}${d?`<em>+${d}</em>`:''}<small>${st[k]>=100?'滿級':`${prog[k]||0}/${c}`}</small></span><span class="fx">${fl&&fl.k===k?fl.t:''}</span></button>`}).join('');
+    return `<button class="abrow ${fl&&fl.k===k?'flash':''}" data-${p}s="${k}" title="${STATD[k]}" ${on?'':'disabled'}><span class="nm">${STATN[k]}</span><span class="bar2"><i data-w="${st[k]}"></i></span><span class="val">${st[k]}${d?`<em>+${d}</em>`:''}<small>${st[k]>=100?'滿級':`${prog[k]||0}/${c}`}${on&&cur>=0?`<b class="pv">+${diePts(dice[cur],k,S)}</b>`:''}</small></span><span class="fx">${fl&&fl.k===k?fl.t:''}</span></button>`}).join('');
   return `<div class="alloc2">${bar}${cue}<div class="abrows">${rows}</div>
     <div class="abbtm"><button class="ob" data-${p}undo="1" ${left<dice.length?'':'disabled'}>↩ 復原</button>${done?`<button class="ob main" data-${p}ok="1">${o.okText}</button>`:`<button class="ob" data-${p}auto="1">自動分配</button>`}</div>
     <p class="hint">數字下方是升級進度：能力越高，升一級要的點數越多；不滿一級的點數會存起來。</p></div>`;
@@ -221,7 +221,7 @@ function renderPlan(){
       if(S.acts.length)opts.push(back);else opts.push({t:'↩ 重新分配骰子',f:()=>{S.diceDone=false;logDrop('alloc'+Y);renderPlan()}});
       act=actHtml(`今年要把時間花在哪？（${S.acts.length+1}/2）`,S.acts.length?`已選：${S.acts.map(id=>acts.find(a=>a.id===id)?.n).join('、')}`:'選兩件事，會影響今年的能力和遇到的事件。',opts);
     }else{
-      act=actHtml('要報考哪一個？','',exams.map(k=>({t:EXAMS[k].name+(EXAMS[k].subj&&examProg(k)?`（已過 ${examProg(k)}/${EXAMS[k].subj}）`:''),s:`${EXAMS[k].info||''}｜難度 ${EXAMS[k].diff}・報名 ${EXAMS[k].cost} 萬`,f:()=>{S.examT=k;if(S.acts.length===2)confirmPlan();else renderPlan()}})).concat([back]));
+      act=actHtml('要報考哪一個？','',exams.map(k=>({t:EXAMS[k].name+(EXAMS[k].subj&&examProg(k)?`（已過 ${examProg(k)}/${EXAMS[k].subj}）`:''),s:`${EXAMS[k].info||''}｜難度 ${EXAMS[k].diff}・報名費 ${EXAMS[k].stageFee?EXAMS[k].stageFee.map((f,i)=>`${EXAMS[k].stages[i][0]} ${feeTxt(f)}`).join('、'):EXAMS[k].cost?feeTxt(EXAMS[k].cost):'免費'}`,f:()=>{S.examT=k;if(S.acts.length===2)confirmPlan();else renderPlan()}})).concat([back]));
     }
   }else{confirmPlan();return}
   gameLayout(act,S.rolled);
@@ -239,9 +239,9 @@ function renderEvent(){
   if(!R){
     logPush(`ev${Y}-${S.evN}`,E.sud?'bad':'',`${slot}｜${E.sud?'⚡ ':''}${E.t}`,`<p>${E.x}</p>`);
     act=actHtml(`事件｜${E.t}`,`${slot}${E.sud?'・突發事件':''}${E.ai?'・AI 事件':''}`,E.c.map((c,i)=>{const T=c.tier||0;
-      const mod=c.d?((c.d.s?Math.floor((S.st[c.d.s]-50)/10):0)+tChk(c.d.s||'luck')):0;const p=c.d?clamp((21-(c.d.dc-mod))/20,.05,.95):1;
+      const mod=c.d?((c.d.s?Math.floor((S.st[c.d.s]-50)/10):0)+tChk(c.d.s||'luck')):0;const fp=tierP(c);const p=fp!=null?fp:c.d?clamp((21-(c.d.dc-mod))/20,.05,.95):1;
       const amp=E.sud?'':`・影響幅度${['小','小','中','大'][T]}`;
-      return {t:c.t,s:c.d?`成功率 ${Math.round(p*100)}%｜${c.d.s?`看${STATN[c.d.s]}`:'純看運氣'}${amp}`:S.ev.noChoice?'沒有選擇，只能承受':`必定成功${amp}`,warn:T===3,f:()=>chooseOpt(i)}}));
+      return {t:c.t,s:c.d?`成功率 ${Math.round(p*100)}%${fp!=null?(luckyNow()?'（天選之人加成）':unluckyNow()?'（衰神附體）':''):`｜${c.d.s?`看${STATN[c.d.s]}`:'純看運氣'}`}${amp}`:S.ev.noChoice?'沒有選擇，只能承受':`必定成功${amp}`,warn:T===3,f:()=>chooseOpt(i)}}));
   }else{
     const verdict=R.roll===20?'大成功！':R.roll===1?'大失敗……':R.ok?'成功':'失敗';
     logPush(`res${Y}-${S.evN}`,R.roll==null?'':R.ok?'good':'bad',`你選擇：${R.label}`,
@@ -253,13 +253,13 @@ function renderEvent(){
 function renderYearEnd(){
   const R=S.report,Y=S.year;
   const tot=R.L.reduce((a,b)=>a+b[1],0);
-  const rows=R.L.map(r=>`<tr><td>${r[0]}</td><td class="n ${r[1]<0?'neg':''}">${fmt(r[1])}</td></tr>`).join('');
+  const rows=R.L.map(r=>`<tr><td>${r[0]}</td><td class="n ${r[1]<0?'neg':''}">${fmt2(r[1])}</td></tr>`).join('');
   const msg=R.next==='death'?`<div class="result bad">這一年的最後，${S.dead}帶走了你。帳本停在了這一頁。</div>`
     :R.next==='crash'?'<div class="result bad">再也撐不住了。醫生說：「你需要的不是休假，是退休。」</div>'
     :R.next==='admit'?`<div class="result">${S.sy>=4?'重考的一年結束了。再拚一次！':'高中職三年結束了。升學季，開始！'}</div>`
     :R.next==='gadmit'?'<div class="result">🎓 大學畢業了！接下來：研究所推甄、研究所考試，還是直接就業？</div>'
     :R.next==='gradwork'?'<div class="result">🎓 碩士畢業！</div>':'';
-  logPush('ye'+Y,'ledger',`年末結算`,`<table class="ledger">${rows||'<tr><td>本年度無收支</td><td class="n">0</td></tr>'}<tr class="tot"><td>本期淨額</td><td class="n ${tot<0?'neg':''}">${fmt(tot)}</td></tr></table>
+  logPush('ye'+Y,'ledger',`年末結算`,`<table class="ledger">${rows||'<tr><td>本年度無收支</td><td class="n">0.00</td></tr>'}<tr class="tot"><td>本期淨額</td><td class="n ${tot<0?'neg':''}">${fmt2(tot)}</td></tr></table>
     ${R.notes.length?`<ul class="notes">${R.notes.map(n=>`<li class="${n[0]}">${n[1]}</li>`).join('')}</ul>`:''}${msg}`);
   let opts;
   if(R.next==='death')opts=[{t:'翻到人生最後一頁 ▸',main:1,f:()=>endGame('death')}];
@@ -372,7 +372,7 @@ function renderGAdmit(){
 function renderEnd(){
   if(!S.endSeen){cinePage('人生結算',endingLines(),'查看人生結算 ▸',()=>{S.endSeen=1;renderEnd()});return}
   extraAchv();codexRecord();
-  const [title,desc]=endingTitle();const nw=netWorth();const pv=presentValue(nw,S.age-15);const cash0=3+(TRAITS[S.trait].cash||0),spent=cash0+S.earn-S.cash,par=v=>v<0?`(${fmt(-v)})`:fmt(v);/* 支出用倒推的：期初＋收入－期末現金，所以三行一定對得起來 */
+  const [title,desc]=endingTitle();const nw=netWorth();const LG=lifeLedger(),pv=LG.pv,cash0=LG.cash0,house$=LG.house,spent=LG.spent,par=v=>fmt2(v);/* 支出用倒推的：期初＋收入－期末現金，所以三行一定對得起來 */
   if(nw>=3000)S.achv.add('身價破三千萬');if(S.married)S.achv.add('成家');if(S.kids>=2)S.achv.add('兒女成群');
   const jobs=S.log.filter(l=>l.h.startsWith('➜')).length;if(jobs>=4)S.achv.add('斜槓轉職王');
   const share=`【會計人生模擬器】${S.name?S.name+'的人生｜':''}種子 ${S.seed}｜${title}｜稱號：${(S.titles||[]).map(k=>TITLES[k].n).join('、')}｜${eduLine()}｜最高職位：${S.peak?.t||'—'}｜淨資產 ${fmt(nw)} 萬｜成就：${[...S.achv].join('、')||'無'}`;
@@ -383,14 +383,16 @@ function renderEnd(){
     <div class="row mt4"><button class="btn gold" id="shot">📸 存成貼文圖</button><button class="btn gold" id="shot2">📱 限動尺寸</button><button class="btn ghost" id="cx2">📖 人生圖鑑 ${codexPct()}%</button><button class="btn ghost" id="clink">🔗 邀朋友挑戰同一個世界</button><span class="copyok" id="clok"></span></div>
     <div class="split mt8">
       <div><h3>人生資產負債表（萬元）</h3><table class="ledger">
-        <tr><td>期初存款（15 歲）</td><td class="n">${fmt(cash0)}</td></tr>
-        <tr><td>一生累積收入</td><td class="n">${fmt(S.earn)}</td></tr>
-        <tr><td>一生累積支出（含投資損益）</td><td class="n neg">${par(-spent)}</td></tr>
+        <tr><td>期初存款（15 歲）</td><td class="n">${fmt2(cash0)}</td></tr>
+        <tr><td>一生累積收入</td><td class="n">${fmt2(S.earn)}</td></tr>
+        ${spent>=0?`<tr><td>一生累積支出（含投資與其他損益）</td><td class="n neg">${par(-spent)}</td></tr>`:`<tr><td>投資與其他收入淨額（扣除支出後）</td><td class="n">${par(-spent)}</td></tr>`}
+        ${house$?`<tr><td>購屋頭期款與房貸（轉為不動產）</td><td class="n neg">${par(-house$)}</td></tr>`:''}
         <tr class="sub"><td>現金與投資</td><td class="n ${S.cash<0?'neg':''}">${par(S.cash)}</td></tr>
-        ${S.house?`<tr><td>不動產（淨值）</td><td class="n">${fmt(nw-S.cash)}</td></tr>`:''}
+        ${S.house?`<tr><td>不動產（淨值）</td><td class="n">${fmt2(nw-S.cash-(S.pen||0))}</td></tr>`:''}
+        ${S.pen?`<tr><td>退休金專戶（勞退／公教個人專戶）</td><td class="n">${fmt2(S.pen)}</td></tr>`:''}
         <tr class="tot"><td>淨資產</td><td class="n ${nw<0?'neg':''}">${par(nw)}</td></tr>
         <tr><td>折現回 15 歲的現值</td><td class="n ${pv<0?'neg':''}">${par(pv)}</td></tr></table>
-        <p class="hint">💡 錢有時間價值。用每年 2% 的通膨折現，${S.age-15} 年後的 ${fmt(nw)} 萬，只等於你 15 歲那年的 ${fmt(pv)} 萬。</p></div>
+        <p class="hint">💡 錢有時間價值。用 2% 的折現率往回折，${S.age-15} 年後的 ${fmt(nw)} 萬，只等於你 15 歲那年的 ${fmt(pv)} 萬。</p></div>
       <div><h3>生涯摘要</h3>
         <div class="kv"><span>學歷</span><span class="t">${eduLine()}</span></div>
         <div class="kv"><span>結束年齡</span><span>${S.age} 歲</span></div>

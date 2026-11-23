@@ -62,12 +62,14 @@ function variant(ev,n){
   const r=mulberry32(seedHash(S.seed+'|'+ev.id+'|'+n));
   const memo={};
   const f=t=>typeof t==='string'?storyTok(t).replace(/\{(\w+)\}/g,(m,k)=>{const p=POOL[k];if(!p)return m;if(!(k in memo))memo[k]=(k==='co'||k==='boss')?castOf(k):p[Math.floor(r()*p.length)];return memo[k]}):t;
-  const scale=e=>{if(!e)return e;const o={};for(const k in e){const v=e[k];if(!v)continue;o[k]=(SK.includes(k)&&!ev.sud)||['love','port','pt'].includes(k)?v:(Math.round(v*(.7+r()*.6))||Math.sign(v))}return o};
+  /* 金額隨機浮動 ±30%（每個世界不太一樣）；但結果文字寫了確切金額（例如「一百六十萬」「二百元」），存款就不浮動，免得對不上 */
+  const exact=t=>/[0-9０-９一二三四五六七八九十百千兩]\s?[萬元塊]/.test(t||'');
+  const scale=(e,txt)=>{if(!e)return e;const o={};for(const k in e){const v=e[k];if(!v)continue;o[k]=(SK.includes(k)&&!ev.sud)||['love','port','pt'].includes(k)||(k==='cash'&&exact(txt))?v:k==='cash'?(money(v*(.7+r()*.6))||Math.sign(v)*.01):(Math.round(v*(.7+r()*.6))||Math.sign(v))}return o};
   const twist=(e,txt)=>{if(r()<.1){const tw=TWISTS[Math.floor(r()*TWISTS.length)];const e2={...(e||{})};for(const k in tw.e)e2[k]=(e2[k]||0)+tw.e[k];return [e2,(txt||'')+' '+tw.r]}return [e,txt]};
   const c=ev.c.map(ch=>{
-    if(ch.d){let [oe,or]=twist(scale(ch.ok.e),f(ch.ok.r));let [ne,nr]=twist(scale(ch.ng.e),f(ch.ng.r));
+    if(ch.d){let [oe,or]=twist(scale(ch.ok.e,ch.ok.r),f(ch.ok.r));let [ne,nr]=twist(scale(ch.ng.e,ch.ng.r),f(ch.ng.r));
       return {...ch,t:f(ch.t),d:{...ch.d,dc:clamp(ch.d.dc+Math.floor(r()*3)-1,4,18)},ok:{...ch.ok,e:oe,r:or},ng:{...ch.ng,e:ne,r:nr}}}
-    let [e,rr]=twist(scale(ch.e),f(ch.r));return {...ch,t:f(ch.t),e,r:rr};
+    let [e,rr]=twist(scale(ch.e,ch.r),f(ch.r));return {...ch,t:f(ch.t),e,r:rr};
   });
   c.sort((a,b)=>(b.tier===0?.5:b.tier)-(a.tier===0?.5:a.tier));
   return {...ev,t:f(ev.t),x:f(ev.x),c};
@@ -122,4 +124,34 @@ function normalizeEvent(ev,keep){
   return {...ev,c};
 }
 for(let i=0;i<EVENTS.length;i++)EVENTS[i]=normalizeEvent(EVENTS[i],false);
-for(let i=0;i<SUDDEN.length;i++)if(!SUDDEN[i].noChoice)SUDDEN[i]=normalizeEvent(SUDDEN[i],true);/* 沒有選項的職場崩壞不補成三個選項 */
+for(let i=0;i<SUDDEN.length;i++)if(!SUDDEN[i].noChoice)SUDDEN[i]=normalizeEvent(SUDDEN[i],true);
+/* 修正風險等級：有些原本只有兩個選項的事件，系統補齊三種風險時是照順序分配，沒看內容，
+   結果「婉拒」變成高風險、「借朋友 30 萬」變成低風險。這裡照選項內容重新指定（3＝高、2＝中、1＝低），
+   並把能力值的加減幅度換成新等級的大小 */
+const TIER_FIX={
+  h_port:{'熬夜認真寫反思':3,'花錢找人代寫':2,'隨便上傳幾張照片':1},
+  u4:{'一個人通宵做完':3,'在群組溫柔但堅定地催':2,'大家一起爛':1},
+  w_wed:{'全部出席，紅包包好包滿':3,'不去的就用轉帳包禮金':2,'只去真正熟的':1},
+  w_partner:{'全力衝刺':3,'先問清楚合夥人之路要付出什麼':2,'我想要生活':1},
+  w_selfbiz2:{'全部接下來':3,'臨時請兩個工讀生幫忙':2,'婉拒新客戶，顧好老客戶':1},
+  w_cowork:{'全部扛下來':3,'用這個機會整理出一套標準作業流程':2,'跟主管談人力':1},
+  w_ppt:{'熬夜做完':3,'用公司模板，先做出重點版，早上再補細節':2,'回「收到」，明天早點來':1},
+  w_kidfee:{'全部報名':3,'自己教':2,'挑一個最想學的':1},
+  w_tp:{'熬夜查資料庫':3,'請國外團隊支援':2,'用自己累積的同業資料庫先做初稿':1},
+  erp_scope:{'全部答應':3,'跟客戶重新談範圍和費用':2,'挑最重要的幾項先做':1},
+  u8:{'認真幫忙整理':3,'幫老闆做一張每日營收表，順便談加薪':2,'婉拒，我只是來搖飲料的':1},
+  u_research:{'好！我願意':3,'先幫教授整理一學期資料再決定':2,'婉拒，想專心準備就業':1},
+  g_ta:{'認真改，還寫評語':3,'做一份「借貸常見錯誤」講義發給全班':2,'只看答案':1},
+  w_loan:{'借給{friend}':3,'只借五萬，當作不會回來的錢':2,'婉拒，但幫{friend}做財務規劃':1},
+  w_startinvite:{'認真考慮':3,'先當兼職顧問，看看再說':2,'婉拒':1},
+  w_trip:{'參加，但自己多請一天假延長':3,'不去，特休自己用':2,'參加':1},
+  w_b4field:{'邊吃邊抽憑證':3,'吃一點，但先把憑證抽完':2,'婉拒，專心工作':1},
+  lg_board:{'照做，但自己留一份紀錄':3,'建議改開臨時董事會':2,'婉拒，並說明法律風險':1},
+  cr_sponsor:{'接了，錢很好賺':3,'先深入調查再決定':2,'婉拒並拍片提醒觀眾':1},
+  np_donor:{'先收下，收據之後再說':3,'向董事會報告':2,'婉拒，並說明這是違法的':1},
+  w_semi2:{'舉手外派':3,'爭取一年就好，不要兩年':2,'留在台灣':1},
+};
+for(const e of EVENTS){const fx=TIER_FIX[e.id];if(!fx)continue;
+  for(const c of e.c){const T=fx[c.t];if(!T||!c.d)continue;c.tier=T;c.d={...c.d,dc:TIERDC[T]};
+    for(const br of [c.ok,c.ng]){if(!br||!br.e)continue;const o={};for(const k in br.e){const v=br.e[k];o[k]=SK.includes(k)&&v?Math.sign(v)*T:v}br.e=o}}}
+/* 沒有選項的職場崩壞不補成三個選項 */

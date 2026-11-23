@@ -30,7 +30,7 @@ const JOBS={
   forensic:{name:'調查局・鑑識會計',stress:11,lad:[['調查官',72],['調查專員',90],['組長',115],['處長',150]],
     req:[null,{y:3,skill:46},{y:4,skill:60,net:32},{y:5,skill:72,net:48}],entry:s=>s.certs['調查特考'],flavor:'追金流、破大案。會計界的柯南。'},
   abroad:{name:'新加坡・區域財務',stress:10,lad:[['Regional Accountant',115],['Finance Manager',180],['Regional Controller',280],['APAC CFO',450]],
-    req:[null,{y:2,skill:60,eng:66},{y:3,skill:70,eng:74,net:48},{y:4,skill:80,eng:80,net:68}],entry:s=>deg(s)&&((s.st.eng>=62&&s.st.skill>=52)||(s.certs.USCPA&&s.st.eng>=45)||(s.flags.intl&&s.st.eng>=55&&s.st.skill>=50)||s.flags.abroadInvite),flavor:'薪水漂亮、房租更漂亮。每年只回台灣過年。'},
+    req:[null,{y:2,skill:60,eng:66},{y:3,skill:70,eng:74,net:48},{y:4,skill:80,eng:80,net:68}],entry:s=>deg(s)&&((s.st.eng>=75&&s.st.skill>=58)||(s.certs.USCPA&&s.st.eng>=62)||(s.flags.intl&&s.st.eng>=68&&s.st.skill>=55)||s.flags.abroadInvite),flavor:'薪水漂亮、房租更漂亮。每年只回台灣過年。'},
   data:{name:'轉職・資料分析',stress:9,lad:[['資料分析師',70],['資深分析師',100],['數據主管',150],['數據長',230]],
     req:[null,{y:2,skill:48},{y:3,skill:60,net:34},{y:4,skill:72,net:52}],entry:s=>s.certs['資料分析學程']||s.flags.gI||(s.flags.cs&&s.st.skill>=48),flavor:'從 Excel 進化到 Python。原來 VLOOKUP 是一切的起點。'},
   esg:{name:'ESG 永續顧問',stress:9,lad:[['永續顧問',62],['資深顧問',85],['永續經理',120],['永續總監',180]],
@@ -74,28 +74,38 @@ const JOBS={
   npo:{name:'非營利組織・財務長',stress:5,lad:[['會計專員',42],['財務主管',58],['財務長',80],['執行長',110]],
     req:[null,{y:2,skill:40},{y:3,skill:52,net:45},{y:4,skill:60,net:62,mind:60}],entry:s=>deg(s)&&s.st.skill>=38&&(s.flags.biz||s.st.mind>=55),flavor:'每一筆捐款都要交代得清清楚楚。薪水不高，但你知道錢去了哪裡。'},
   selfbook:{name:'自營記帳士事務所',special:true,stress:9,title:'記帳士老闆',entry:s=>s.certs['記帳士']&&s.cash>=30,cost:30,flavor:'自己當老闆。客戶越多賺越多，但每個客戶都覺得你應該隨傳隨到。'},
-  selfcpa:{name:'自營會計師事務所',special:true,stress:12,title:'執業會計師',entry:s=>s.certs.CPA&&s.workYears>=5&&s.cash>=100,cost:100,flavor:'掛上自己名字的招牌。簽證、稅務、顧問一手包。'},
+  selfcpa:{name:'自營會計師事務所',special:true,stress:12,title:'執業會計師',entry:s=>s.certs.CPA&&((s.exp.big4||0)+(s.exp.local||0)>=2||s.flags.cpaTrain)&&s.cash>=100,cost:100,flavor:'掛上自己名字的招牌。簽證、稅務、顧問一手包。'},
   creator:{name:'全職財會 YouTuber',special:true,stress:8,title:'財會網紅',entry:s=>s.fans>=8,flavor:'「今天來聊聊為什麼你的薪水存不了錢」——演算法是你的新老闆。'},
   cafe:{name:'轉行開咖啡廳',special:true,stress:10,title:'咖啡廳老闆',entry:s=>s.cash>=150,cost:150,flavor:'受夠了數字，想聞咖啡香。至少你的店帳會是全台最漂亮的。'},
   grad:{name:'研究所',special:true,stress:5,title:'研究生',entry:s=>false,flavor:''},
 };
 const accOK=s=>['acc','accinfo'].includes(s.edu.major)||s.flags.accCredits;
 const degOK=s=>deg(s)||(s.phase==='uni'&&!s.job&&s.sy>=4);
+/* 考試難度：以「標準考生」（相關能力平均 60、有認真準備，擲骰修正 +2）為基準。
+   門檻 = 23 − 20 × 標準考生的及格機率。實際機率會隨玩家能力上下浮動。
+   排序：記帳士 45% ＞ 高考、US CPA 每科、CFA 每級、CMA、CIA、CISA 30% ＞ 關務、會計師每科 25% ＞ 調查局筆試 20%（推估，查無官方資料）＞ 律師 10%
+   US CPA、CFA 都比台灣會計師簡單一級 */
+/* 報名費（萬元，記到小數第二位；1 美元約 32 元）
+   公務人員考試規費收費標準（2025/9/1 施行）：高考三級、特考三等筆試 1,800 元；體能測驗 1,000 元；口試比照高考三級 1,500 元
+   專門職業及技術人員考試規費收費標準（2025/9/1 施行）：高等考試（會計師）2,300 元；律師第一試 1,000 元、第二試 2,300 元；普通考試（記帳士）2,000 元
+   證券商高級業務員：2026 年場次 250 元（104 學習整理）；信託業務人員：筆試 565 元（2017 年報導，之後未查到調整）
+   US CPA 每科 $268.59＋國際考場費 $390，4 科約 9 萬；CFA 每級 $1,490 約 5 萬；CMA 約 $1,325、CIA 約 $1,250 各約 4 萬；CISA $760 約 2 萬
+   分關卡的考試（律師、調查局）依 stageFee 每考一關收一次 */
 const EXAMS={
-  CPA:{name:'會計師考試',subj:7,info:'7 科：國文、中級會計學、高等會計學、成本與管理會計、審計學、公司法證交法商會法、稅務法規｜科別及格可累積',dc:16,st:['aca','skill'],cost:3,diff:'地獄',ok:s=>degOK(s)&&accOK(s),why:'需大學學歷＋會計學分'},
-  '記帳士':{name:'記帳士考試',info:'5 科：國文＋會計學概要、記帳相關法規概要、稅務相關法規概要、租稅申報實務｜看總成績',dc:11,st:['aca','skill'],cost:1,diff:'普通',ok:s=>!s.certs.CPA&&(degOK(s)||(s.edu.hsKind==='voc'&&s.phase!=='hs')),why:'需高職商科或大學學歷（已是會計師就不必考）'},
-  '高考':{name:'高考三級（會計）',info:'8 科：國文、法學知識與英文＋財政學、會計審計法規、中級會計學、成本與管理會計、政府會計、審計學｜看總成績',dc:15,st:['aca','skill'],cost:1,diff:'困難',ok:degOK,why:'需大學學歷'},
-  '調查特考':{name:'調查局特考三等（財經實務組）',stages:[['筆試',null],['體能測驗','hp'],['口試','mind']],info:'三關：筆試 6 科（共同 2＋專業 4）→ 體能測驗 → 口試，要一路過關',dc:15,st:['aca','hp'],cost:1,diff:'困難',ok:degOK,why:'需大學學歷'},
-  USCPA:{name:'美國會計師 US CPA',subj:4,info:'4 科：AUD、FAR、REG 三科核心＋1 科選考｜可以一科一科考',dc:13,st:['eng','skill'],cost:25,diff:'中等・很貴',ok:s=>degOK(s)&&accOK(s)&&s.st.eng>=30,why:'需學歷、會計學分、英文 30'},
-  CFA:{name:'CFA 特許金融分析師',subj:3,info:'三個級別（Level I～III），要一級一級往上考',dc:15,st:['skill','eng'],cost:10,diff:'困難・很貴',ok:s=>degOK(s),why:'需大學學歷'},
-  CIA:{name:'國際內部稽核師 CIA',subj:3,info:'3 科（Part 1～3）｜可以一科一科考',dc:12,st:['skill','aca'],cost:8,diff:'中等',ok:degOK,why:'需大學學歷'},
+  CPA:{name:'會計師考試',subj:7,info:'7 科：國文（作文）＋專業 6 科（中級會計學、高等會計學、成本會計與管理會計、審計學、公司法證交法商會法、稅務法規）｜科別及格，及格科目保留 3 年｜年紀越大越難抽出時間準備',dc:18,st:['aca','skill'],cost:0.23,diff:'地獄',ok:s=>degOK(s)&&accOK(s),why:'需大學學歷＋會計學分'},
+  '記帳士':{name:'記帳士考試',info:'5 科：國文＋會計學概要、記帳相關法規概要、稅務相關法規概要、租稅申報實務｜看總成績',dc:14,st:['aca','skill'],cost:0.2,diff:'普通',ok:s=>!s.certs.CPA&&(degOK(s)||(s.edu.hsKind==='voc'&&s.phase!=='hs')),why:'需高職商科或大學學歷（已是會計師就不必考）'},
+  '高考':{name:'高考三級（會計）',info:'8 科：國文、法學知識與英文＋財政學、會計審計法規、中級會計學、成本與管理會計、政府會計、審計學｜看總成績',dc:17,st:['aca','skill'],cost:0.18,diff:'困難',ok:degOK,why:'需大學學歷'},
+  '調查特考':{name:'調查局特考三等（財經實務組）',stages:[['筆試',null],['體能測驗','hp'],['口試','mind']],stageFee:[0.18,0.1,0.15],info:'三關：筆試 6 科（共同 2＋專業 4）→ 體能測驗 → 口試，要一路過關',dc:19,st:['aca','hp'],cost:0,diff:'困難',ok:degOK,why:'需大學學歷'},
+  USCPA:{name:'美國會計師 US CPA',subj:4,info:'4 科：AUD、FAR、REG 三科核心＋1 科選考｜可以一科一科考，及格科目保留 30 個月',dc:17,st:['eng','skill'],cost:9,diff:'中等・很貴',ok:s=>degOK(s)&&accOK(s)&&s.st.eng>=30,why:'需學歷、會計學分、英文 30'},
+  CFA:{name:'CFA 特許金融分析師',subj:3,info:'三個級別（Level I～III），要一級一級往上考',dc:17,st:['skill','eng'],cost:5,diff:'困難・很貴',ok:s=>degOK(s),why:'需大學學歷'},
+  CIA:{name:'國際內部稽核師 CIA',subj:3,info:'3 科（Part 1～3）｜可以一科一科考，第一次報考起 3 年內要考完',dc:17,st:['skill','aca'],cost:4,diff:'中等',ok:degOK,why:'需大學學歷'},
   '永續管理師':{name:'永續管理師（民間證照）',info:'不是國家考試，由民間機構發證，上課後一次測驗',dc:7,st:['skill','aca'],cost:2,diff:'簡單',ok:s=>s.phase!=='hs',why:''},
-  '律師':{name:'律師考試',stages:[['第一試',null],['第二試',null]],info:'兩試：第一試綜合法學（一）（二）→ 第二試 5 科必考＋1 科選考（申論）',dc:17,st:['aca','mind'],cost:2,diff:'地獄',ok:s=>degOK(s)&&s.flags.law,why:'需修滿法律學分（大學修法律輔系，或下班讀法律學分班）'},
-  '證券高業':{name:'證券商高級業務員',info:'3 科：法規、投資學、財務分析',dc:9,st:['skill','aca'],cost:1,diff:'普通',ok:s=>s.phase!=='hs',why:''},
-  '信託業務員':{name:'信託業務人員',info:'2 科：信託法規、信託實務',dc:7,st:['skill','aca'],cost:1,diff:'簡單',ok:s=>s.phase!=='hs',why:''},
-  CMA:{name:'美國管理會計師 CMA',subj:2,info:'2 科（Part 1、Part 2）｜可以一科一科考',dc:13,st:['skill','eng'],cost:12,diff:'中等・很貴',ok:s=>degOK(s)&&s.st.eng>=35,why:'需大學學歷、英文 35'},
-  CISA:{name:'國際電腦稽核師 CISA',info:'1 次考試，涵蓋資訊系統稽核五大領域',dc:13,st:['skill','aca'],cost:10,diff:'中等・很貴',ok:degOK,why:'需大學學歷'},
-  '關務特考':{name:'關務特考三等（關稅會計）',info:'筆試：共同科目＋專業科目（含中級會計學、審計學）',dc:14,st:['aca','eng'],cost:1,diff:'困難',ok:degOK,why:'需大學學歷'},
+  '律師':{name:'律師考試',stages:[['第一試',null],['第二試',null]],stageFee:[0.1,0.23],info:'兩試：第一試綜合法學（一）（二）→ 第二試 5 科必考＋1 科選考（申論）',dc:21,st:['aca','mind'],cost:0,diff:'地獄',ok:s=>degOK(s)&&s.flags.law,why:'需修滿法律學分（大學修法律輔系，或下班讀法律學分班）'},
+  '證券高業':{name:'證券商高級業務員',info:'3 科：法規、投資學、財務分析',dc:9,st:['skill','aca'],cost:0.03,diff:'普通',ok:s=>s.phase!=='hs',why:''},
+  '信託業務員':{name:'信託業務人員',info:'2 科：信託法規、信託實務',dc:7,st:['skill','aca'],cost:0.06,diff:'簡單',ok:s=>s.phase!=='hs',why:''},
+  CMA:{name:'美國管理會計師 CMA',subj:2,info:'2 科（Part 1、Part 2）｜可以一科一科考，第一次報考起 3 年內要考完',dc:17,st:['skill','eng'],cost:4,diff:'中等・很貴',ok:s=>degOK(s)&&s.st.eng>=35,why:'需大學學歷、英文 35'},
+  CISA:{name:'國際電腦稽核師 CISA',info:'1 次考試，涵蓋資訊系統稽核五大領域',dc:17,st:['skill','aca'],cost:2,diff:'中等・很貴',ok:degOK,why:'需大學學歷'},
+  '關務特考':{name:'關務特考三等（關稅會計）',info:'筆試：共同科目＋專業科目（含中級會計學、審計學）',dc:18,st:['aca','eng'],cost:0.18,diff:'困難',ok:degOK,why:'需大學學歷'},
   '資料分析學程':{name:'Python 資料分析學程',info:'修課＋期末專題，不是國家考試',dc:12,st:['skill','aca'],cost:6,diff:'中等',ok:s=>s.phase==='work'||s.flags.cs,why:'大學需修資工課'},
 };
 
@@ -142,6 +152,7 @@ const ACTS_WORK=[
   {id:'network',n:'經營人脈',fx:'人脈 +4 ・ 績效 +4 ・ -3 萬',e:{net:4,perf:4,cash:-3}},
   {id:'learn',n:'進修英文',fx:'英文 +5 ・ -5 萬',e:{eng:5,cash:-5}},
   {id:'night',n:'讀進修部（拿學位）',fx:'讀滿 4 年拿大學學歷 ・ -6 萬',e:{aca:2,hp:-5,cash:-6},cond:s=>!deg(s)},
+  {id:'cpatrain',n:'參加會計師職前訓練',fx:'沒在事務所待滿 2 年也能開業 ・ -3 萬',e:{skill:1,mind:-2,cash:-3},cond:s=>s.certs.CPA&&!s.flags.cpaTrain&&(s.exp.big4||0)+(s.exp.local||0)<2},
   {id:'credits',n:'補修會計學分',fx:'修完就能考會計師 ・ -4 萬',e:{skill:2,cash:-4},cond:s=>deg(s)&&!accOK(s)},
   {id:'lawnight',n:'下班讀法律學分班',fx:'修滿 2 年可考律師 ・ -5 萬',e:{aca:2,hp:-4,cash:-5},cond:s=>deg(s)&&!s.flags.law},
   {id:'code',n:'下班學程式',fx:'專業 +2 ・ 學滿 3 年可轉工程師',e:{skill:2,hp:-4,mind:-2}},

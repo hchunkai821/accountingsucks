@@ -1,7 +1,7 @@
 /* 01-core.js — 核心：亂數（種子）、能力值、升級成本、稱號 TITLES、天賦 TRAITS、高中職 HSS、大學 UNIS、研究所 GRADS */
 "use strict";
 /* 版本號：唯一的來源。改版時只改這裡，再到 README 的「更新紀錄」補一行 */
-const VERSION='1.0.0';
+const VERSION='1.1.0';
 /* 玩家能輸入的東西（名字、種子、網址參數）一律先過濾，避免被塞進網頁變成程式碼 */
 const cleanSeed=v=>String(v==null?'':v).replace(/[^A-Za-z0-9_-]/g,'').slice(0,16);
 const cleanName=v=>String(v==null?'':v).replace(/[<>&"'`\\]/g,'').trim().slice(0,8);
@@ -32,14 +32,14 @@ const TITLES={
   genius:{n:'天才',r:3,d:'學力經驗 ×1.5',mul:{aca:1.5}},
   examgod:{n:'考神',r:3,d:'所有升學、證照考試擲骰 +2',exam:2},
   dicegod:{n:'骰神',r:3,d:'能力骰最小點數為 3',diceMin:3},
-  chosen:{n:'天選之人',r:3,d:'純運氣檢定 +3',chk:{luck:3}},
+  chosen:{n:'天選之人',r:3,d:'事件成功率提高到 50%／65%／80%',chk:{luck:3}},
   star:{n:'福星',r:3,d:'突發事件機率減半',sud:.5},
   allround:{n:'全能型',r:3,d:'所有能力經驗 ×1.15',mulAll:1.15},
   numfreak:{n:'數字狂',r:2,d:'專業經驗 ×1.5',mul:{skill:1.5}},
   bilingual:{n:'雙語人',r:2,d:'英文經驗 ×1.5',mul:{eng:1.5}},
-  butterfly:{n:'社交達人',r:2,d:'人脈經驗 ×1.4，人脈檢定 +1',mul:{net:1.4},chk:{net:1}},
+  butterfly:{n:'社交達人',r:2,d:'人脈經驗 ×1.4',mul:{net:1.4}},
   iron:{n:'鐵人',r:2,d:'體力損失減半',hpLoss:.5},
-  steelheart:{n:'鋼鐵心臟',r:2,d:'心態檢定 +2',chk:{mind:2}},
+  steelheart:{n:'鋼鐵心臟',r:2,d:'心態損失減半',mindLoss:.5},
   earlybird:{n:'早起鳥',r:2,d:'每年多 1 顆能力骰',dice:1},
   lucky6:{n:'六六大順',r:2,d:'能力骰擲出 6 時額外 +3 點',six:3},
   saver:{n:'小資存錢王',r:2,d:'生活費 -12%',live:.88},
@@ -48,13 +48,13 @@ const TITLES={
   bossfav:{n:'老闆緣',r:2,d:'升遷擲骰 +3',promo:3},
   longevity:{n:'長壽體質',r:2,d:'死亡風險減半',life:.5},
   charm:{n:'萬人迷',r:2,d:'談戀愛更容易有進展',love:1},
-  owl:{n:'夜貓子',r:1,d:'學力、專業經驗 ×1.2，但體力檢定 -1',mul:{aca:1.2,skill:1.2},chk:{hp:-1}},
+  owl:{n:'夜貓子',r:1,d:'學力、專業經驗 ×1.2，但每年體力 -1',mul:{aca:1.2,skill:1.2},hpY:-1},
   workaholic:{n:'工作狂',r:1,d:'每年績效 +10，但每年體力 -3',perfY:10,hpY:-3},
   glass:{n:'玻璃人',r:1,neg:1,d:'體力損失 ×1.5，每年體力 -2',hpLoss:1.5,hpY:-2},
   glassheart:{n:'玻璃心',r:1,neg:1,d:'心態損失 ×1.5',mindLoss:1.5},
-  loner:{n:'邊緣人',r:1,neg:1,d:'人脈檢定 -2，但心態檢定 +1',chk:{net:-2,mind:1}},
+  loner:{n:'邊緣人',r:1,neg:1,d:'人脈經驗 ×0.7，但每年心態 +2',mul:{net:.7},mindY:2},
   procrast:{n:'拖延症',r:1,neg:1,d:'每年少 1 顆能力骰，但考試擲骰 +1（最後一刻爆發）',dice:-1,exam:1},
-  jinx:{n:'衰神附體',r:1,neg:1,d:'純運氣檢定 -3',chk:{luck:-3}},
+  jinx:{n:'衰神附體',r:1,neg:1,d:'事件成功率降到 20%／35%／55%',chk:{luck:-3}},
   moonlight:{n:'月光族',r:1,neg:1,d:'生活費 +15%',live:1.15},
   forever:{n:'萬年考生',r:1,neg:1,d:'證照考試擲骰 -2，但學力經驗 ×1.3',exam:-2,mul:{aca:1.3}},
   disaster:{n:'災星',r:1,neg:1,d:'突發事件機率 ×1.6',sud:1.6},
@@ -178,18 +178,19 @@ function dmLabel(s){return dmList(s).map(x=>`${x.type==='double'?'雙主修':'�
 /* 研究所只收會計相關碩士班。組別依各校簡章／課程表查證：
    臺大：甲組（主修會計）、乙組（主修商業智慧與資料分析）｜政大：會計組、稅務組｜雲科：甲組（會計組）、乙組（會計資訊組）
    其他學校查不到分組資料，一律標「不分組」 */
+/* 研究所門檻：比大學好考一點點（頂尖研究所 −2、其他 −6）。同一個人考上的研究所，多半跟大學同級或更好 */
 const GRADS=[
-  {id:'ntua',n:'臺大會計系碩士班',g:'甲組（主修會計）',cut:78,pres:5,f:'gA',fx:'四大、投行、外商加分'},
-  {id:'ntub2',n:'臺大會計系碩士班',g:'乙組（主修商業智慧與資料分析）',cut:76,pres:5,f:'gI',fx:'直接拿到資料分析能力，數據、ERP、IT 稽核加分'},
-  {id:'nccua',n:'政大會計系碩士班',g:'會計組',cut:76,pres:5,f:'gA',fx:'四大、投行、外商加分'},
-  {id:'nccuc',n:'政大會計系碩士班',g:'稅務組',cut:73,pres:5,f:'gC',fx:'四大稅務、國稅局、調查局加分'},
-  {id:'nckua',n:'成大會計系碩士班',g:'不分組',cut:70,pres:4,f:'gA',fx:'四大、投行、外商加分'},
-  {id:'ntpuc',n:'北大會計系碩士班',g:'不分組',cut:66,pres:4,f:'gA',fx:'四大、企業財會加分'},
-  {id:'nchua',n:'中興會計系碩士班',g:'不分組',cut:64,pres:4,f:'gA',fx:'四大、企業財會加分'},
-  {id:'ccub',n:'中正會計與資訊科技系碩士班',g:'不分組',cut:61,pres:3,f:'gB',fx:'企業財會、資料分析加分'},
-  {id:'scua',n:'東吳會計系碩士班',g:'不分組',cut:58,pres:3,f:'gA',fx:'四大、事務所加分'},
-  {id:'ntubb',n:'北商會計資訊系碩士班',g:'不分組',cut:57,pres:3,f:'gB',fx:'企業財會、資料分析加分'},
-  {id:'yuntecha',n:'雲科會計系碩士班',g:'甲組（會計組）',cut:52,pres:3,f:'gA',fx:'事務所、企業財會加分'},
-  {id:'yuntechb',n:'雲科會計系碩士班',g:'乙組（會計資訊組）',cut:50,pres:3,f:'gB',fx:'企業財會、資料分析加分'},
-  {id:'pvtg',n:'私立大學會計系碩士班',g:'不分組',cut:42,pres:2,f:'gA',fx:'多兩年專業累積'},
+  {id:'ntua',n:'臺大會計系碩士班',g:'甲組（主修會計）',cut:76,pres:5,f:'gA',fx:'四大、投行、外商加分'},
+  {id:'ntub2',n:'臺大會計系碩士班',g:'乙組（主修商業智慧與資料分析）',cut:74,pres:5,f:'gI',fx:'直接拿到資料分析能力，數據、ERP、IT 稽核加分'},
+  {id:'nccua',n:'政大會計系碩士班',g:'會計組',cut:74,pres:5,f:'gA',fx:'四大、投行、外商加分'},
+  {id:'nccuc',n:'政大會計系碩士班',g:'稅務組',cut:67,pres:5,f:'gC',fx:'四大稅務、國稅局、調查局加分'},
+  {id:'nckua',n:'成大會計系碩士班',g:'不分組',cut:64,pres:4,f:'gA',fx:'四大、投行、外商加分'},
+  {id:'ntpuc',n:'北大會計系碩士班',g:'不分組',cut:60,pres:4,f:'gA',fx:'四大、企業財會加分'},
+  {id:'nchua',n:'中興會計系碩士班',g:'不分組',cut:58,pres:4,f:'gA',fx:'四大、企業財會加分'},
+  {id:'ccub',n:'中正會計與資訊科技系碩士班',g:'不分組',cut:55,pres:3,f:'gB',fx:'企業財會、資料分析加分'},
+  {id:'scua',n:'東吳會計系碩士班',g:'不分組',cut:52,pres:3,f:'gA',fx:'四大、事務所加分'},
+  {id:'ntubb',n:'北商會計資訊系碩士班',g:'不分組',cut:51,pres:3,f:'gB',fx:'企業財會、資料分析加分'},
+  {id:'yuntecha',n:'雲科會計系碩士班',g:'甲組（會計組）',cut:46,pres:3,f:'gA',fx:'事務所、企業財會加分'},
+  {id:'yuntechb',n:'雲科會計系碩士班',g:'乙組（會計資訊組）',cut:44,pres:3,f:'gB',fx:'企業財會、資料分析加分'},
+  {id:'pvtg',n:'私立大學會計系碩士班',g:'不分組',cut:36,pres:2,f:'gA',fx:'多兩年專業累積'},
 ];
